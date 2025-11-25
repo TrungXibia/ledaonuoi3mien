@@ -1,3 +1,5 @@
+--- START OF FILE streamlit_app.py ---
+
 import streamlit as st
 import pandas as pd
 import logic
@@ -5,83 +7,81 @@ import data_fetcher
 import concurrent.futures
 from datetime import datetime, timedelta
 import importlib
-
 importlib.reload(data_fetcher)
-importlib.reload(logic)
 
-STATION_ABBR = {
-    "TP. Hồ Chí Minh": "HCM", "Đồng Tháp": "ĐT", "Cà Mau": "CM", "Bến Tre": "BT", "Vũng Tàu": "VT",
-    "Bạc Liêu": "BL", "Đồng Nai": "ĐN", "Cần Thơ": "CT", "Sóc Trăng": "ST", "Tây Ninh": "TN",
-    "An Giang": "AG", "Bình Thuận": "BTh", "Vĩnh Long": "VL", "Bình Dương": "BĐ", "Trà Vinh": "TV",
-    "Long An": "LA", "Bình Phước": "BP", "Hậu Giang": "HG", "Tiền Giang": "TG", "Kiên Giang": "KG",
-    "Đà Lạt": "ĐL", "Thừa Thiên Huế": "TTH", "Phú Yên": "PY", "Đắk Lắk": "ĐLk", "Quảng Nam": "QNa",
-    "Đà Nẵng": "ĐN", "Khánh Hòa": "KH", "Bình Định": "BĐ", "Quảng Trị": "QT", "Quảng Bình": "QB",
-    "Gia Lai": "GL", "Ninh Thuận": "NT", "Đắk Nông": "ĐNo", "Quảng Ngãi": "QNg", "Kon Tum": "KT"
-}
+# --- CẤU HÌNH ---
+st.set_page_config(
+    page_title="SIÊU GÀ APP - PRO",
+    page_icon="🐔",
+    layout="wide",
+    initial_sidebar_state="expanded"
+)
 
-st.set_page_config(page_title="SIÊU GÀ APP - PRO", page_icon="🐔", layout="wide")
-
+# --- CSS FIX ---
 st.markdown("""
 <style>
     .block-container { padding-top: 1rem !important; padding-bottom: 1rem !important; }
     [data-testid="column"] { padding: 0 0.3rem !important; }
-    .table-wrapper { overflow-x: auto; margin: 10px 0; box-shadow: 0 1px 4px rgba(0,0,0,0.1); }
-    .tracking-table { border-collapse: collapse; width: 100%; max-width: 800px; margin: 0 auto; font-size: 12px; }
-    .tracking-table th { padding: 8px 4px; border: 1px solid #34495e; background-color: #2c3e50; color: white; text-align: center; position: sticky; top: 0; }
-    .tracking-table td { padding: 4px; border: 1px solid #dee2e6; text-align: center; }
-    .tracking-table td.moc-col { font-weight: bold; background-color: #f8f9fa; color: #d35400; }
-    .cell-hit { background-color: #28a745 !important; color: white; font-weight: bold; }
-    .cell-miss { background-color: #fff; color: #ccc; }
-    @media (max-width: 768px) { .tracking-table { font-size: 10px; } }
+    .table-wrapper { overflow-x: auto; margin: 10px 0; border-radius: 6px; box-shadow: 0 1px 4px rgba(0,0,0,0.1); }
+    .tracking-table { border-collapse: collapse; width: 100%; max-width: 650px; margin: 0 auto; font-size: 11px; }
+    .tracking-table th { padding: 6px 4px; border: 1px solid #34495e; background-color: #2c3e50; color: white; text-align: center; position: sticky; top: 0; z-index: 10; font-weight: 600; width: 20px; }
+    .tracking-table td { padding: 2px 1px; border: 1px solid #dee2e6; text-align: center; width: 20px; }
+    .tracking-table td.moc-col { font-weight: bold; background-color: #f8f9fa; color: #2c3e50; width: 25px; }
+    .cell-hit { background-color: #28a745 !important; color: white; font-weight: bold; font-size: 16px; }
+    .cell-miss { background-color: #dc3545 !important; color: white; font-size: 14px; }
 </style>
 """, unsafe_allow_html=True)
 
+# --- QUẢN LÝ DỮ LIỆU ---
 @st.cache_data(ttl=1800)
 def get_master_data(num_days):
     with concurrent.futures.ThreadPoolExecutor() as executor:
         f_dt = executor.submit(data_fetcher.fetch_dien_toan, num_days)
         f_tt = executor.submit(data_fetcher.fetch_than_tai, num_days)
-        f_mb = executor.submit(data_fetcher.fetch_xsmb_group, num_days)
+        # Fetch Full XSMB via API (includes G6, G7)
+        f_mb = executor.submit(data_fetcher.fetch_xsmb_full, num_days)
         
         dt = f_dt.result()
         tt = f_tt.result()
-        mb_db, mb_g1, mb_g7 = f_mb.result()
+        mb = f_mb.result()
 
     df_dt = pd.DataFrame(dt)
     df_tt = pd.DataFrame(tt)
+    df_mb = pd.DataFrame(mb)
     
-    xsmb_rows = []
-    limit = min(len(dt), len(mb_db), len(mb_g1), len(mb_g7))
-    for i in range(limit):
-        xsmb_rows.append({
-            "date": dt[i]["date"],
-            "xsmb_full": mb_db[i],
-            "xsmb_2so": mb_db[i][-2:] if mb_db[i] else "",
-            "g1_full": mb_g1[i],
-            "g1_2so": mb_g1[i][-2:] if mb_g1[i] else "",
-            "g7_list": mb_g7[i]
+    # Prefix columns for MB to avoid collision if needed, but merge on date
+    if not df_mb.empty:
+        df_mb = df_mb.rename(columns={
+            "g6_list": "mb_g6_list", 
+            "g7_list": "mb_g7_list", 
+            "db_2so": "mb_db_2so"
         })
-    df_xsmb = pd.DataFrame(xsmb_rows)
+        # Keep only necessary columns from MB for master table
+        df_mb = df_mb[["date", "mb_db_2so", "mb_g6_list", "mb_g7_list"]]
 
-    if not df_dt.empty and not df_xsmb.empty:
+    if not df_dt.empty:
         df = pd.merge(df_dt, df_tt, on="date", how="left")
-        df = pd.merge(df, df_xsmb, on="date", how="left")
+        if not df_mb.empty:
+            df = pd.merge(df, df_mb, on="date", how="left")
         return df
     return pd.DataFrame()
 
+# --- SIDEBAR ---
 with st.sidebar:
     st.title("🐔 SIÊU GÀ TOOL")
+    st.caption("Version: Cyclic Check + Multi-Prize")
     days_fetch = st.number_input("Số ngày tải:", 30, 365, 60, step=10)
     days_show = st.slider("Hiển thị:", 10, 100, 20)
     if st.button("🔄 Tải lại dữ liệu", type="primary"):
         st.cache_data.clear()
         st.rerun()
 
+# --- LOAD DATA ---
 try:
     with st.spinner("🚀 Đang tải dữ liệu đa luồng..."):
         df_full = get_master_data(days_fetch)
         if df_full.empty:
-            st.error("Không có dữ liệu.")
+            st.error("Không có dữ liệu. Kiểm tra kết nối mạng.")
             st.stop()
 except Exception as e:
     st.error(f"Lỗi: {e}")
@@ -89,33 +89,28 @@ except Exception as e:
 
 df_show = df_full.head(days_show).copy()
 
-st.title("🎯 DÀN LÔ GHÉP (MATRIX)")
-st.caption("Ghép liên tiếp + Đảo (VD: 123 -> 12,21,23,32)")
+# === 🎯 DÀN NUÔI (MATRIX) ===
+st.title("🎯 DÀN NUÔI (CYCLIC & MULTI-PRIZE)")
 st.divider()
 
+# Row 1: Nguồn và Miền
 c1, c2 = st.columns([1, 1])
-src_mode = c1.selectbox("Nguồn:", ["Thần Tài", "Điện Toán"])
+src_mode = c1.selectbox("Nguồn (Dàn gốc):", ["Thần Tài", "Điện Toán"])
 region = c2.selectbox("Miền:", ["Miền Bắc", "Miền Nam", "Miền Trung"])
 
+# Row 2: Logic Selection
 selected_station = None
-target_col = None
+check_mode_desc = ""
 
 if region == "Miền Bắc":
     c3, c4, c5 = st.columns([1.5, 1.5, 1.5])
-    comp_mode = c3.selectbox("So với:", ["XSMB (ĐB)", "Giải Nhất", "Giải 7"])
-    check_range = c4.slider("Khung nuôi (ngày):", 1, 20, 5)
-    backtest_mode = c5.selectbox("Backtest:", ["Hiện tại", "Lùi 1 ngày", "Lùi 2 ngày", "Lùi 3 ngày"])
+    # MB fixed comparison: G6 + G7
+    c3.selectbox("So với:", ["G6 + G7"], disabled=True)
+    check_mode_desc = "G6 + G7"
     
-    df_display = df_full
-    df_check_source = df_full
+    check_range = c4.slider("Khung nuôi (ngày):", 1, 20, 7)
+    backtest_mode = c5.selectbox("Backtest:", ["Hiện tại", "Lùi 1 ngày", "Lùi 2 ngày", "Lùi 3 ngày", "Lùi 4 ngày", "Lùi 5 ngày"])
     
-    if comp_mode == "XSMB (ĐB)":
-        target_col = "xsmb_2so"
-    elif comp_mode == "Giải Nhất":
-        target_col = "g1_2so"
-    else:
-        target_col = "g7_list"
-
 else:
     c3, c4, c5, c6, c7 = st.columns([1, 1.2, 0.8, 1, 1])
     weekdays = ["Tất cả", "Chủ Nhật", "Thứ 2", "Thứ 3", "Thứ 4", "Thứ 5", "Thứ 6", "Thứ 7"]
@@ -129,19 +124,28 @@ else:
         station_options = ["Tất cả"] + stations
         selected_station = c4.selectbox("Đài:", station_options)
     
-    prize_mode = c5.selectbox("Giải:", ["ĐB", "G1", "G8", "G7", "G6"])
-    check_range = c6.slider("Khung:", 1, 20, 5)
-    backtest_mode = c7.selectbox("Backtest:", ["Hiện tại", "Lùi 1", "Lùi 2", "Lùi 3"])
+    # MN/MT fixed comparison: G6 + G7 + G8
+    c5.selectbox("Giải:", ["G6+G7+G8"], disabled=True)
+    check_mode_desc = "G6 + G7 + G8"
+    
+    check_range = c6.slider("Khung:", 1, 20, 7)
+    backtest_mode = c7.selectbox("Backtest:", ["Hiện tại", "Lùi 1", "Lùi 2", "Lùi 3", "Lùi 4", "Lùi 5"])
 
-    prize_map = {
-        "ĐB": "db_2so", "G1": "g1_2so", 
-        "G8": "g8_2so", "G7": "g7_2so", "G6": "g6_2so"
-    }
-    target_col = prize_map[prize_mode]
+backtest_offset = int(backtest_mode.split()[1]) if backtest_mode != "Hiện tại" else 0
 
+# === FETCH SPECIFIC REGION DATA ===
+df_display = None
+df_check_source = None
+
+if region == "Miền Bắc":
+    # Use df_full which already has MB API data
+    df_display = df_full
+    df_check_source = df_full
+else:
+    # Fetch MN/MT Data
     if selected_station == "Tất cả":
         all_stations = data_fetcher.get_all_stations_in_region(region)
-        with st.spinner(f"🔄 Đang tải dữ liệu {region}..."):
+        with st.spinner(f"🔄 Tải dữ liệu {region}..."):
             all_station_data = []
             with concurrent.futures.ThreadPoolExecutor() as executor:
                 future_to_station = {executor.submit(data_fetcher.fetch_station_data, s, days_fetch): s for s in all_stations}
@@ -152,153 +156,197 @@ else:
                         all_station_data.extend(data)
                     except: pass
             
+            if not all_station_data: st.stop()
+            
+            # Group by date for consolidated checking
             df_temp = pd.DataFrame(all_station_data)
             grouped_data = []
-            if not df_temp.empty:
-                for date, group in df_temp.groupby('date'):
-                    day_vals = []
-                    for _, row in group.iterrows():
-                        val = row.get(target_col, [])
-                        if isinstance(val, str) and val: day_vals.append(val)
-                        elif isinstance(val, list): day_vals.extend(val)
-                    
-                    if day_vals:
-                        grouped_data.append({'date': date, 'results': day_vals})
+            for date, group in df_temp.groupby('date'):
+                # Collect all numbers from G6, G7, G8 across all stations for this day
+                day_values = []
+                for _, row in group.iterrows():
+                    day_values.extend(row.get('g6_list', []))
+                    day_values.extend(row.get('g7_list', []))
+                    day_values.extend(row.get('g8_list', []))
+                
+                if day_values:
+                    grouped_data.append({'date': date, 'result_pool': list(set(day_values))})
             
             df_check_source = pd.DataFrame(grouped_data)
-            if not df_check_source.empty:
-                df_check_source['date_obj'] = pd.to_datetime(df_check_source['date'], format='%d/%m/%Y')
-                df_check_source = df_check_source.sort_values('date_obj', ascending=False)
-                df_check_source = df_check_source.drop(columns=['date_obj'])
-
+            df_check_source['date_obj'] = pd.to_datetime(df_check_source['date'], format='%d/%m/%Y')
+            df_check_source = df_check_source.sort_values('date_obj', ascending=False).drop(columns=['date_obj'])
+            
+            # Filter for display (Specific Day)
             if selected_day != "Tất cả":
                 WEEKDAY_MAP = {"Thứ 2": 0, "Thứ 3": 1, "Thứ 4": 2, "Thứ 5": 3, "Thứ 6": 4, "Thứ 7": 5, "Chủ Nhật": 6}
-                t_wd = WEEKDAY_MAP.get(selected_day)
-                df_display = df_check_source[df_check_source['date'].apply(
-                    lambda x: datetime.strptime(x, "%d/%m/%Y").weekday() == t_wd
-                )].copy() if not df_check_source.empty else pd.DataFrame()
+                target = WEEKDAY_MAP.get(selected_day)
+                df_display = df_check_source[df_check_source['date'].apply(lambda d: datetime.strptime(d, "%d/%m/%Y").weekday() == target)].copy()
             else:
                 df_display = df_check_source.copy()
-
     else:
-        with st.spinner(f"🔄 Đang tải {selected_station}..."):
-            station_data = data_fetcher.fetch_station_data(selected_station, total_days=days_fetch)
-            df_temp = pd.DataFrame(station_data)
-            df_temp['results'] = df_temp[target_col].apply(
-                lambda x: [x] if isinstance(x, str) and x else (x if isinstance(x, list) else [])
-            )
-            df_display = df_temp[['date', 'results']]
+        # Single Station
+        with st.spinner(f"🔄 Tải {selected_station}..."):
+            s_data = data_fetcher.fetch_station_data(selected_station, total_days=days_fetch)
+            if not s_data: st.stop()
+            
+            # Prepare result pool per day
+            p_data = []
+            for item in s_data:
+                pool = item.get('g6_list', []) + item.get('g7_list', []) + item.get('g8_list', [])
+                p_data.append({'date': item['date'], 'result_pool': pool})
+            
+            df_display = pd.DataFrame(p_data)
             df_check_source = df_display
 
-backtest_offset = int(backtest_mode.split()[1]) if "Lùi" in backtest_mode else 0
+# === PREPARE ANALYSIS DATA ===
 all_days_data = []
-
+start_idx = backtest_offset
+end_idx = min(backtest_offset + 30, len(df_display))
 df_full_lookup = df_full.set_index('date') if not df_full.empty else pd.DataFrame()
 
-if df_display is not None and not df_display.empty:
-    start_idx = backtest_offset
-    end_idx = min(backtest_offset + 30, len(df_display))
+for i in range(start_idx, end_idx):
+    row = df_display.iloc[i]
+    date_val = row['date']
     
-    for i in range(start_idx, end_idx):
-        row = df_display.iloc[i]
-        date_val = row['date']
-        
-        row_src = df_full_lookup.loc[date_val] if date_val in df_full_lookup.index else None
+    # Get Source Numbers (Input)
+    row_src = None
+    if region == "Miền Bắc":
+        row_src = row
+    elif date_val in df_full_lookup.index:
+        row_src = df_full_lookup.loc[date_val]
         if isinstance(row_src, pd.DataFrame): row_src = row_src.iloc[0]
-        
-        if row_src is None: continue
-        
-        src_str = ""
-        if src_mode == "Thần Tài":
-            src_str = str(row_src.get('tt_number', ''))
-        else:
-            val = row_src.get('dt_numbers', [])
-            src_str = "".join(val) if isinstance(val, list) else (str(val) if pd.notna(val) else "")
-            
-        if not src_str or src_str == "nan": continue
-        
-        combos = logic.tao_dan_lien_tiep(src_str)
-        if not combos: continue
+    
+    if row_src is None: continue
 
-        current_results = []
-        if region == "Miền Bắc":
-            val = row.get(target_col)
-            if isinstance(val, list): current_results = val
-            elif val: current_results = [val]
-        else:
-            current_results = row.get('results', [])
+    # Generate Input String
+    src_str = ""
+    if src_mode == "Thần Tài": 
+        src_str = str(row_src.get('tt_number', ''))
+    elif src_mode == "Điện Toán": 
+        val = row_src.get('dt_numbers', [])
+        if isinstance(val, list): src_str = "".join(val)
+        else: src_str = str(val) if pd.notna(val) else ""
+    
+    if not src_str or src_str == "nan": continue
+    
+    # === LOGIC MỚI: DÀN NHỊ HỢP VÒNG ===
+    combos = logic.tao_dan_nhi_hop_vong(src_str)
+    
+    # Get Result Pool for this day (to store in table, though checking is mostly future)
+    if region == "Miền Bắc":
+        # Pool = G6 + G7
+        pool = row.get('mb_g6_list', []) + row.get('mb_g7_list', [])
+    else:
+        # Pool = G6 + G7 + G8 (already prepared in df_display['result_pool'])
+        pool = row.get('result_pool', [])
+        
+    all_days_data.append({
+        'date': date_val, 'source': src_str, 'combos': combos, 
+        'index': i, 'result_pool': pool
+    })
 
-        all_days_data.append({
-            'date': date_val,
-            'source': src_str,
-            'combos': combos,
-            'index': i,
-            'results': current_results
-        })
-
-if not all_days_data:
-    st.warning("⚠️ Không có dữ liệu phù hợp.")
-else:
-    st.markdown("### 📋 Bảng Theo Dõi Lô Ghép")
+# === RENDER MATRIX ===
+if all_days_data:
+    st.markdown(f"### 📋 Bảng Theo Dõi ({check_mode_desc})")
     
     MAX_COLS = 10
     check_source_lookup = df_check_source.set_index('date') if df_check_source is not None else pd.DataFrame()
     
     table_html = "<div class='table-wrapper'><table class='tracking-table'><thead><tr>"
-    table_html += "<th>Ngày</th><th>Nguồn</th><th>Dàn số</th>"
+    table_html += "<th>Ngày</th><th>Mốc</th>"
     for k in range(1, MAX_COLS + 1): table_html += f"<th>N{k}</th>"
     table_html += "</tr></thead><tbody>"
     
     for row_idx, day_data in enumerate(all_days_data):
         date, source, combos, i = day_data['date'], day_data['source'], day_data['combos'], day_data['index']
+        table_html += f"<tr><td>{date}</td><td class='moc-col'>{source}</td>"
         
-        table_html += "<tr>"
-        table_html += f"<td>{date}</td>"
-        table_html += f"<td class='moc-col'>{source}</td>"
-        table_html += f"<td style='text-align:left; max-width:150px; word-wrap:break-word;'>{', '.join(combos)}</td>"
-        
-        num_cols_this_row = min(row_idx + 1, MAX_COLS)
-        
+        num_cols = min(row_idx + 1, MAX_COLS)
         for k in range(1, MAX_COLS + 1):
-            if k > num_cols_this_row:
+            if k > num_cols:
                 table_html += "<td style='background-color:#f8f9fa'></td>"
                 continue
                 
-            check_results = []
+            # Get Check Pool
+            check_pool = []
             if selected_station == "Tất cả" and region != "Miền Bắc":
                 try:
-                    chk_date = (datetime.strptime(date, "%d/%m/%Y") + timedelta(days=k)).strftime("%d/%m/%Y")
-                    if chk_date in check_source_lookup.index:
-                        r = check_source_lookup.loc[chk_date]
+                    c_date = (datetime.strptime(date, "%d/%m/%Y") + timedelta(days=k)).strftime("%d/%m/%Y")
+                    if c_date in check_source_lookup.index:
+                        r = check_source_lookup.loc[c_date]
                         if isinstance(r, pd.DataFrame): r = r.iloc[0]
-                        check_results = r.get('results', [])
+                        check_pool = r.get('result_pool', [])
                 except: pass
             else:
-                chk_idx = i - k
-                if chk_idx >= 0 and chk_idx < len(df_display):
-                    r = df_display.iloc[chk_idx]
+                idx = i - k
+                if idx >= 0:
+                    r = df_display.iloc[idx]
                     if region == "Miền Bắc":
-                        val = r.get(target_col)
-                        check_results = val if isinstance(val, list) else ([val] if val else [])
+                        check_pool = r.get('mb_g6_list', []) + r.get('mb_g7_list', [])
                     else:
-                        check_results = r.get('results', [])
+                        check_pool = r.get('result_pool', [])
+
+            # Check Hit
+            is_hit = False
+            for num in combos:
+                if num in check_pool:
+                    is_hit = True
+                    break
             
-            hit_nums = set(combos) & set(check_results)
+            if is_hit: table_html += "<td class='cell-hit'>✓</td>"
+            elif check_pool: table_html += "<td class='cell-miss'>−</td>"
+            else: table_html += "<td>−</td>"
             
-            if hit_nums:
-                table_html += f"<td class='cell-hit'>{list(hit_nums)[0]}</td>"
-            elif check_results:
-                table_html += "<td class='cell-miss'>-</td>"
-            else:
-                table_html += "<td></td>"
-                
         table_html += "</tr>"
     table_html += "</tbody></table></div>"
     st.markdown(table_html, unsafe_allow_html=True)
+    
+    # ... (Statistics & Pending Sets logic same as before, just using the new check_pool) ...
+    # Simplified Stats Display
+    st.markdown("---")
+    st.caption("Ghi chú: MB so G6+G7. MN/MT so G6+G7+G8.")
+    
+    # Calculate Pending
+    pending = []
+    for row_idx, day_data in enumerate(all_days_data):
+        combos = day_data['combos']
+        # Check against history
+        has_hit = False
+        num_checks = row_idx + 1
+        
+        for k in range(1, num_checks + 1):
+            # (Reuse check logic from above)
+            check_pool = []
+            if selected_station == "Tất cả" and region != "Miền Bắc":
+                try:
+                    c_date = (datetime.strptime(day_data['date'], "%d/%m/%Y") + timedelta(days=k)).strftime("%d/%m/%Y")
+                    if c_date in check_source_lookup.index:
+                        r = check_source_lookup.loc[c_date]
+                        if isinstance(r, pd.DataFrame): r = r.iloc[0]
+                        check_pool = r.get('result_pool', [])
+                except: pass
+            else:
+                idx = day_data['index'] - k
+                if idx >= 0:
+                    r = df_display.iloc[idx]
+                    if region == "Miền Bắc":
+                        check_pool = r.get('mb_g6_list', []) + r.get('mb_g7_list', [])
+                    else:
+                        check_pool = r.get('result_pool', [])
+            
+            if any(c in check_pool for c in combos):
+                has_hit = True
+                break
+        
+        if not has_hit:
+            pending.append({
+                "Ngày": day_data['date'],
+                "Dàn số": ", ".join(combos),
+                "Số lượng": len(combos)
+            })
 
-    st.markdown("#### 💡 Gợi ý dàn ngày mai")
-    if all_days_data:
-        latest = all_days_data[0]
-        st.info(f"Ngày **{latest['date']}** - Nguồn **{latest['source']}**")
-        st.success(f"Dàn nuôi: **{', '.join(latest['combos'])}**")
-        st.caption(f"Kiểm tra với: {region} - {selected_station if region != 'Miền Bắc' else ''} - {comp_mode if region == 'Miền Bắc' else prize_mode}")
+    if pending:
+        st.subheader("🔥 Các Dàn Chưa Ra")
+        st.dataframe(pd.DataFrame(pending), use_container_width=True)
+    else:
+        st.success("Tất cả các dàn trong khung hiển thị đều đã nổ!")
