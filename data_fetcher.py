@@ -1,5 +1,3 @@
---- START OF FILE data_fetcher.py ---
-
 import requests
 import concurrent.futures
 from bs4 import BeautifulSoup
@@ -267,3 +265,4 @@ def fetch_xsmb_group(total_days: int) -> Tuple[List[str], List[str], List[List[s
                             "https://congcuxoso.com/MienBac/GiaiBay/PhoiCauGiaiBay/PhoiCauTuan5So.aspx", total_days)
         
         return f_db.result(), f_g1.result(), f_g7.result()
+
