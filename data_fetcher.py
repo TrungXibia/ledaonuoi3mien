@@ -5,13 +5,15 @@ import logging
 import time
 from typing import List, Dict, Tuple
 import json
-import re
 
 logging.basicConfig(level=logging.INFO)
 HEADERS = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"}
 
-# === MIỀN NAM & MIỀN TRUNG DATA ===
+# === API URLS ===
 DAI_API = {
+    # Miền Bắc
+    "Miền Bắc": "https://www.kqxs88.live/api/front/open/lottery/history/list/game?limitNum=60&gameCode=miba",
+    # Miền Nam
     "An Giang": "https://www.kqxs88.live/api/front/open/lottery/history/list/game?limitNum=60&gameCode=angi",
     "Bạc Liêu": "https://www.kqxs88.live/api/front/open/lottery/history/list/game?limitNum=60&gameCode=bali",
     "Bến Tre": "https://www.kqxs88.live/api/front/open/lottery/history/list/game?limitNum=60&gameCode=betr",
@@ -33,6 +35,7 @@ DAI_API = {
     "Trà Vinh": "https://www.kqxs88.live/api/front/open/lottery/history/list/game?limitNum=60&gameCode=trvi",
     "Vĩnh Long": "https://www.kqxs88.live/api/front/open/lottery/history/list/game?limitNum=60&gameCode=vilo",
     "Vũng Tàu": "https://www.kqxs88.live/api/front/open/lottery/history/list/game?limitNum=60&gameCode=vuta",
+    # Miền Trung
     "Đà Nẵng": "https://www.kqxs88.live/api/front/open/lottery/history/list/game?limitNum=60&gameCode=dana",
     "Bình Định": "https://www.kqxs88.live/api/front/open/lottery/history/list/game?limitNum=60&gameCode=bidi",
     "Đắk Lắk": "https://www.kqxs88.live/api/front/open/lottery/history/list/game?limitNum=60&gameCode=dalak",
@@ -83,32 +86,47 @@ def get_all_stations_in_region(region: str) -> List[str]:
         schedule = LICH_QUAY_NAM
     elif region == "Miền Trung":
         schedule = LICH_QUAY_TRUNG
+        
     for day_stations in schedule.values():
         stations.update(day_stations)
+        
     return sorted(list(stations))
 
-def _extract_loto(prize_content: str) -> List[str]:
-    if not prize_content:
+def _extract_tails(prize_str: str) -> List[str]:
+    """
+    Extract last 2 digits from a prize string.
+    Handles comma-separated values (e.g., "1234,5678").
+    """
+    if not prize_str:
         return []
-    raw_nums = re.split(r'[,\s-]+', prize_content)
-    lotos = []
-    for n in raw_nums:
-        if n and n.isdigit():
-            lotos.append(n[-2:])
-    return lotos
+    
+    results = []
+    # Split by comma if multiple numbers exists
+    raw_nums = prize_str.replace(" ", "").split(",")
+    for num in raw_nums:
+        if len(num) >= 2:
+            results.append(num[-2:])
+    return results
 
 def fetch_station_data(station_name: str, total_days: int = 60) -> List[Dict]:
+    """
+    Fetch lottery data for a specific station from API.
+    Can be used for MN, MT and now MB (using 'Miền Bắc' as station name).
+    """
     url_template = DAI_API.get(station_name)
     if not url_template:
+        logging.error(f"No API URL found for station: {station_name}")
         return []
     
     url = url_template.replace("limitNum=60", f"limitNum={total_days}")
     
     try:
         response = requests.get(url, headers=HEADERS, timeout=10)
+        response.raise_for_status()
         data = response.json()
         
         if not data.get("success"):
+            logging.error(f"API returned error for {station_name}")
             return []
         
         issue_list = data.get("t", {}).get("issueList", [])
@@ -123,34 +141,42 @@ def fetch_station_data(station_name: str, total_days: int = 60) -> List[Dict]:
             
             try:
                 prizes = json.loads(detail)
+                
+                # Basic fields
+                db_str = prizes[0] if len(prizes) > 0 else ""
+                g1_str = prizes[1] if len(prizes) > 1 else ""
+                
                 result = {
                     "date": turn_num,
-                    "db": prizes[0] if len(prizes) > 0 else "",
-                    "g1": prizes[1] if len(prizes) > 1 else "",
-                    "g6": prizes[6] if len(prizes) > 6 else "",
-                    "g7": prizes[7] if len(prizes) > 7 else "",
-                    "g8": prizes[8] if len(prizes) > 8 else "",
+                    "db": db_str,
+                    "db_2so": db_str[-2:] if db_str else "",
+                    "g1_2so": g1_str[-2:] if g1_str else "",
                 }
                 
-                result["db_2so"] = _extract_loto(result["db"])
-                result["g1_2so"] = _extract_loto(result["g1"])
-                result["g6_2so"] = _extract_loto(result["g6"])
-                result["g7_2so"] = _extract_loto(result["g7"])
-                result["g8_2so"] = _extract_loto(result["g8"])
+                # Extract lists of tails for checking
+                # Note: API structure usually: 0:DB, 1:G1, ... 6:G6, 7:G7, 8:G8 (for MN/MT)
+                # For MB: 0:DB, 1:G1, ... 6:G6, 7:G7 (No G8)
                 
-                result["db_2so"] = result["db_2so"][0] if result["db_2so"] else ""
-                result["g1_2so"] = result["g1_2so"][0] if result["g1_2so"] else ""
+                # Safe extraction helper
+                def get_p(idx): return prizes[idx] if len(prizes) > idx else ""
 
+                result["g6_list"] = _extract_tails(get_p(6))
+                result["g7_list"] = _extract_tails(get_p(7))
+                result["g8_list"] = _extract_tails(get_p(8)) # Only meaningful for MN/MT
+                
                 results.append(result)
                 
-            except Exception as e:
+            except json.JSONDecodeError as e:
                 logging.error(f"Error parsing detail for {station_name}: {e}")
                 continue
         
         return results
         
-    except Exception as e:
+    except requests.exceptions.RequestException as e:
         logging.error(f"Error fetching data for {station_name}: {e}")
+        return []
+    except Exception as e:
+        logging.error(f"Unexpected error for {station_name}: {e}")
         return []
 
 def fetch_url(url: str, max_retries: int = 3) -> BeautifulSoup:
@@ -159,7 +185,9 @@ def fetch_url(url: str, max_retries: int = 3) -> BeautifulSoup:
             r = requests.get(url, headers=HEADERS, timeout=10)
             r.raise_for_status()
             return BeautifulSoup(r.text, "html.parser")
-        except Exception:
+        except requests.exceptions.Timeout:
+            time.sleep(1)
+        except requests.exceptions.RequestException as e:
             if attempt < max_retries - 1:
                 time.sleep(1)
             else:
@@ -178,75 +206,53 @@ def fetch_dien_toan(total_days: int) -> List[Dict]:
     soup = fetch_url(f"https://ketqua04.net/so-ket-qua-dien-toan-123/{total_days}")
     data = []
     if not soup: return data
+    
     try:
         divs = soup.find_all("div", class_="result_div", id="result_123")
         for div in divs[:total_days]:
             ds = div.find("span", id="result_date")
-            date = _normalize_date(ds.text.strip()) if ds else ""
-            if not date: continue
+            date_raw = ds.text.strip() if ds else ""
+            if not date_raw: continue
+            
+            date = _normalize_date(date_raw)
             tbl = div.find("table", id="result_tab_123")
             if tbl:
                 row = tbl.find("tbody").find("tr")
                 cells = row.find_all("td") if row else []
                 if len(cells) == 3:
-                    nums = [c.text.strip() for c in cells if c.text.strip().isdigit()]
-                    if len(nums) == 3:
+                    nums = [c.text.strip() for c in cells]
+                    if all(n.isdigit() for n in nums):
                         data.append({"date": date, "dt_numbers": nums})
-    except Exception: pass
+    except Exception as e:
+        logging.error(f"Error parsing Điện Toán: {e}")
     return data
 
 def fetch_than_tai(total_days: int) -> List[Dict]:
     soup = fetch_url(f"https://ketqua04.net/so-ket-qua-than-tai/{total_days}")
     data = []
     if not soup: return data
+    
     try:
         divs = soup.find_all("div", class_="result_div", id="result_tt4")
         for div in divs[:total_days]:
             ds = div.find("span", id="result_date")
-            date = _normalize_date(ds.text.strip()) if ds else ""
-            if not date: continue
+            date_raw = ds.text.strip() if ds else ""
+            if not date_raw: continue
+            
+            date = _normalize_date(date_raw)
             tbl = div.find("table", id="result_tab_tt4")
             if tbl:
                 cell = tbl.find("td", id="rs_0_0")
                 num = cell.text.strip() if cell else ""
                 if num.isdigit() and len(num) == 4:
                     data.append({"date": date, "tt_number": num})
-    except Exception: pass
+    except Exception as e:
+        logging.error(f"Error parsing Thần Tài: {e}")
     return data
 
-def _parse_congcuxoso_loto(url: str, total_days: int) -> List[List[str]]:
-    soup = fetch_url(url)
-    all_days_nums = []
-    if not soup: return all_days_nums
-    
-    try:
-        tbl = soup.find("table", id="MainContent_dgv")
-        if tbl:
-            rows = tbl.find_all("tr")[1:]
-            for row in reversed(rows):
-                cells = row.find_all("td")
-                day_nums = []
-                for cell in reversed(cells):
-                    t = cell.text.strip()
-                    if t and t not in ("-----", "\xa0"):
-                        cleaned = ''.join(filter(str.isdigit, t))
-                        if len(cleaned) >= 2:
-                            day_nums.append(cleaned[-2:])
-                all_days_nums.append(day_nums)
-    except Exception: pass
-    return all_days_nums[:total_days]
-
-def _parse_congcuxoso_single(url: str, total_days: int) -> List[str]:
-    raw_list = _parse_congcuxoso_loto(url, total_days)
-    return [d[0] if d else "" for d in raw_list]
-
-def fetch_xsmb_group(total_days: int) -> Tuple[List[str], List[str], List[List[str]]]:
-    with concurrent.futures.ThreadPoolExecutor() as executor:
-        f_db = executor.submit(_parse_congcuxoso_single, 
-                            "https://congcuxoso.com/MienBac/DacBiet/PhoiCauDacBiet/PhoiCauTuan5So.aspx", total_days)
-        f_g1 = executor.submit(_parse_congcuxoso_single, 
-                            "https://congcuxoso.com/MienBac/GiaiNhat/PhoiCauGiaiNhat/PhoiCauTuan5So.aspx", total_days)
-        f_g7 = executor.submit(_parse_congcuxoso_loto, 
-                            "https://congcuxoso.com/MienBac/GiaiBay/PhoiCauGiaiBay/PhoiCauTuan5So.aspx", total_days)
-        
-        return f_db.result(), f_g1.result(), f_g7.result()
+def fetch_xsmb_full(total_days: int) -> List[Dict]:
+    """
+    Fetch full XSMB data using the API (same source as MN/MT).
+    Returns list of dicts with keys for validation (g6_list, g7_list).
+    """
+    return fetch_station_data("Miền Bắc", total_days)
