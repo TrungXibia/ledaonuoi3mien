@@ -15,7 +15,7 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# --- CSS FIX (Tối ưu cho bảng 20 cột) ---
+# --- CSS FIX (Tối ưu hiển thị cột Dàn số) ---
 st.markdown("""
 <style>
     .block-container { padding-top: 1rem !important; padding-bottom: 1rem !important; }
@@ -33,9 +33,9 @@ st.markdown("""
     .tracking-table { 
         border-collapse: collapse; 
         width: 100%; 
-        min-width: 800px; /* Đảm bảo bảng không bị co quá nhỏ */
+        min-width: 1000px; /* Tăng chiều rộng tối thiểu vì thêm cột Dàn */
         margin: 0 auto; 
-        font-size: 10px; /* Font nhỏ hơn xíu */
+        font-size: 10px; 
     }
     
     .tracking-table th { 
@@ -48,7 +48,7 @@ st.markdown("""
         top: 0; 
         z-index: 10; 
         font-weight: 600; 
-        min-width: 25px; /* Chiều rộng tối thiểu cho cột N */
+        min-width: 25px; 
     }
     
     .tracking-table td { 
@@ -61,9 +61,22 @@ st.markdown("""
     .tracking-table td.moc-col { 
         font-weight: bold; 
         background-color: #f8f9fa; 
-        color: #2c3e50; 
-        min-width: 35px;
+        color: #d63031; /* Màu đỏ cho số mốc */
+        min-width: 40px;
         font-size: 11px;
+    }
+    
+    /* CSS cho cột Dàn số mới */
+    .tracking-table td.dan-col {
+        font-size: 9px;
+        text-align: left;
+        padding: 2px 4px;
+        min-width: 120px;
+        max-width: 200px;
+        white-space: normal; /* Cho phép xuống dòng */
+        color: #2d3436;
+        background-color: #fff;
+        line-height: 1.2;
     }
     
     .tracking-table td.date-col {
@@ -82,7 +95,6 @@ def get_master_data(num_days):
     with concurrent.futures.ThreadPoolExecutor() as executor:
         f_dt = executor.submit(data_fetcher.fetch_dien_toan, num_days)
         f_tt = executor.submit(data_fetcher.fetch_than_tai, num_days)
-        # Fetch Full XSMB via API (includes G6, G7)
         f_mb = executor.submit(data_fetcher.fetch_xsmb_full, num_days)
         
         dt = f_dt.result()
@@ -93,14 +105,12 @@ def get_master_data(num_days):
     df_tt = pd.DataFrame(tt)
     df_mb = pd.DataFrame(mb)
     
-    # Prefix columns for MB to avoid collision if needed, but merge on date
     if not df_mb.empty:
         df_mb = df_mb.rename(columns={
             "g6_list": "mb_g6_list", 
             "g7_list": "mb_g7_list", 
             "db_2so": "mb_db_2so"
         })
-        # Keep only necessary columns from MB for master table
         df_mb = df_mb[["date", "mb_db_2so", "mb_g6_list", "mb_g7_list"]]
 
     if not df_dt.empty:
@@ -113,7 +123,7 @@ def get_master_data(num_days):
 # --- SIDEBAR ---
 with st.sidebar:
     st.title("🐔 SIÊU GÀ TOOL")
-    st.caption("Version: 20 Days Matrix")
+    st.caption("Version: 20 Days + Detail Column")
     days_fetch = st.number_input("Số ngày tải:", 30, 365, 60, step=10)
     days_show = st.slider("Hiển thị dòng:", 10, 100, 20)
     if st.button("🔄 Tải lại dữ liệu", type="primary"):
@@ -146,11 +156,9 @@ check_mode_desc = ""
 
 if region == "Miền Bắc":
     c3, c4, c5 = st.columns([1.5, 1.5, 1.5])
-    # MB fixed comparison: G6 + G7
     c3.selectbox("So với:", ["G6 + G7"], disabled=True)
     check_mode_desc = "G6 + G7"
-    
-    check_range = c4.slider("Khung nuôi (hiển thị N):", 1, 20, 20) # Mặc định max 20
+    check_range = c4.slider("Khung nuôi (hiển thị N):", 1, 20, 20)
     backtest_mode = c5.selectbox("Backtest:", ["Hiện tại", "Lùi 1 ngày", "Lùi 2 ngày", "Lùi 3 ngày", "Lùi 4 ngày", "Lùi 5 ngày"])
     
 else:
@@ -166,16 +174,14 @@ else:
         station_options = ["Tất cả"] + stations
         selected_station = c4.selectbox("Đài:", station_options)
     
-    # MN/MT fixed comparison: G6 + G7 + G8
     c5.selectbox("Giải:", ["G6+G7+G8"], disabled=True)
     check_mode_desc = "G6 + G7 + G8"
-    
     check_range = c6.slider("Khung (N):", 1, 20, 20)
     backtest_mode = c7.selectbox("Backtest:", ["Hiện tại", "Lùi 1", "Lùi 2", "Lùi 3", "Lùi 4", "Lùi 5"])
 
 backtest_offset = int(backtest_mode.split()[1]) if backtest_mode != "Hiện tại" else 0
 
-# === FETCH SPECIFIC REGION DATA ===
+# === FETCH DATA ===
 df_display = None
 df_check_source = None
 
@@ -183,7 +189,6 @@ if region == "Miền Bắc":
     df_display = df_full
     df_check_source = df_full
 else:
-    # Fetch MN/MT Data
     if selected_station == "Tất cả":
         all_stations = data_fetcher.get_all_stations_in_region(region)
         with st.spinner(f"🔄 Tải dữ liệu {region}..."):
@@ -199,7 +204,6 @@ else:
             
             if not all_station_data: st.stop()
             
-            # Group by date for consolidated checking
             df_temp = pd.DataFrame(all_station_data)
             grouped_data = []
             for date, group in df_temp.groupby('date'):
@@ -226,16 +230,14 @@ else:
         with st.spinner(f"🔄 Tải {selected_station}..."):
             s_data = data_fetcher.fetch_station_data(selected_station, total_days=days_fetch)
             if not s_data: st.stop()
-            
             p_data = []
             for item in s_data:
                 pool = item.get('g6_list', []) + item.get('g7_list', []) + item.get('g8_list', [])
                 p_data.append({'date': item['date'], 'result_pool': pool})
-            
             df_display = pd.DataFrame(p_data)
             df_check_source = df_display
 
-# === PREPARE ANALYSIS DATA ===
+# === PREPARE ANALYSIS ===
 all_days_data = []
 start_idx = backtest_offset
 end_idx = min(backtest_offset + days_show, len(df_display))
@@ -264,7 +266,6 @@ for i in range(start_idx, end_idx):
     
     if not src_str or src_str == "nan": continue
     
-    # === LOGIC DÀN NHỊ HỢP VÒNG ===
     combos = logic.tao_dan_nhi_hop_vong(src_str)
     
     if region == "Miền Bắc":
@@ -280,34 +281,32 @@ for i in range(start_idx, end_idx):
 # === RENDER MATRIX ===
 if all_days_data:
     st.markdown(f"### 📋 Bảng Theo Dõi ({check_mode_desc})")
-    
-    # === THAY ĐỔI QUAN TRỌNG: MAX_COLS = 20 ===
     MAX_COLS = 20
-    
     check_source_lookup = df_check_source.set_index('date') if df_check_source is not None else pd.DataFrame()
     
     table_html = "<div class='table-wrapper'><table class='tracking-table'><thead><tr>"
-    table_html += "<th>Ngày</th><th>Mốc</th>"
+    # Thêm cột "Dàn số" vào header
+    table_html += "<th>Ngày</th><th>Mốc</th><th>Dàn số</th>"
     
-    # Header N1 -> N20
     for k in range(1, MAX_COLS + 1): 
         table_html += f"<th>N{k}</th>"
     table_html += "</tr></thead><tbody>"
     
     for row_idx, day_data in enumerate(all_days_data):
         date, source, combos, i = day_data['date'], day_data['source'], day_data['combos'], day_data['index']
-        table_html += f"<tr><td class='date-col'>{date}</td><td class='moc-col'>{source}</td>"
         
-        # Số ngày đã qua kể từ ngày tạo cầu (để tô màu tam giác)
+        # Chuyển list combos thành chuỗi string
+        combos_str = ", ".join(combos)
+        
+        # Render hàng mới có thêm cột dan-col
+        table_html += f"<tr><td class='date-col'>{date}</td><td class='moc-col'>{source}</td><td class='dan-col'>{combos_str}</td>"
+        
         days_passed = row_idx + 1
-        
         for k in range(1, MAX_COLS + 1):
-            # Chỉ hiển thị ô nếu nằm trong vùng tam giác
             if k > days_passed:
                 table_html += "<td style='background-color:#f8f9fa'></td>"
                 continue
                 
-            # Get Check Pool
             check_pool = []
             if selected_station == "Tất cả" and region != "Miền Bắc":
                 try:
@@ -326,7 +325,6 @@ if all_days_data:
                     else:
                         check_pool = r.get('result_pool', [])
 
-            # Check Hit
             is_hit = False
             for num in combos:
                 if num in check_pool:
@@ -343,13 +341,12 @@ if all_days_data:
     
     # === STATISTICS ===
     st.markdown("---")
-    st.caption("Ghi chú: Bảng hiển thị tối đa 20 ngày nuôi.")
+    st.caption("Ghi chú: Cột 'Dàn số' hiển thị chi tiết các số nhị hợp vòng được nuôi.")
     
     pending = []
     for row_idx, day_data in enumerate(all_days_data):
         combos = day_data['combos']
         has_hit = False
-        # Chỉ check tối đa đến MAX_COLS (20 ngày) hoặc số ngày thực tế đã qua
         num_checks = min(row_idx + 1, MAX_COLS)
         
         for k in range(1, num_checks + 1):
