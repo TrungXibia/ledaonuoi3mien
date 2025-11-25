@@ -15,18 +15,64 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# --- CSS FIX ---
+# --- CSS FIX (Tối ưu cho bảng 20 cột) ---
 st.markdown("""
 <style>
     .block-container { padding-top: 1rem !important; padding-bottom: 1rem !important; }
     [data-testid="column"] { padding: 0 0.3rem !important; }
-    .table-wrapper { overflow-x: auto; margin: 10px 0; border-radius: 6px; box-shadow: 0 1px 4px rgba(0,0,0,0.1); }
-    .tracking-table { border-collapse: collapse; width: 100%; max-width: 650px; margin: 0 auto; font-size: 11px; }
-    .tracking-table th { padding: 6px 4px; border: 1px solid #34495e; background-color: #2c3e50; color: white; text-align: center; position: sticky; top: 0; z-index: 10; font-weight: 600; width: 20px; }
-    .tracking-table td { padding: 2px 1px; border: 1px solid #dee2e6; text-align: center; width: 20px; }
-    .tracking-table td.moc-col { font-weight: bold; background-color: #f8f9fa; color: #2c3e50; width: 25px; }
-    .cell-hit { background-color: #28a745 !important; color: white; font-weight: bold; font-size: 16px; }
-    .cell-miss { background-color: #dc3545 !important; color: white; font-size: 14px; }
+    
+    /* Wrapper cho phép cuộn ngang */
+    .table-wrapper { 
+        overflow-x: auto; 
+        margin: 10px 0; 
+        border-radius: 6px; 
+        box-shadow: 0 1px 4px rgba(0,0,0,0.1); 
+        border: 1px solid #eee;
+    }
+    
+    .tracking-table { 
+        border-collapse: collapse; 
+        width: 100%; 
+        min-width: 800px; /* Đảm bảo bảng không bị co quá nhỏ */
+        margin: 0 auto; 
+        font-size: 10px; /* Font nhỏ hơn xíu */
+    }
+    
+    .tracking-table th { 
+        padding: 4px 2px; 
+        border: 1px solid #34495e; 
+        background-color: #2c3e50; 
+        color: white; 
+        text-align: center; 
+        position: sticky; 
+        top: 0; 
+        z-index: 10; 
+        font-weight: 600; 
+        min-width: 25px; /* Chiều rộng tối thiểu cho cột N */
+    }
+    
+    .tracking-table td { 
+        padding: 2px 0px; 
+        border: 1px solid #dee2e6; 
+        text-align: center; 
+        min-width: 25px;
+    }
+    
+    .tracking-table td.moc-col { 
+        font-weight: bold; 
+        background-color: #f8f9fa; 
+        color: #2c3e50; 
+        min-width: 35px;
+        font-size: 11px;
+    }
+    
+    .tracking-table td.date-col {
+        min-width: 60px;
+        color: #666;
+    }
+
+    .cell-hit { background-color: #28a745 !important; color: white; font-weight: bold; font-size: 14px; }
+    .cell-miss { background-color: #dc3545 !important; color: white; font-size: 12px; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -67,9 +113,9 @@ def get_master_data(num_days):
 # --- SIDEBAR ---
 with st.sidebar:
     st.title("🐔 SIÊU GÀ TOOL")
-    st.caption("Version: Cyclic Check + Multi-Prize")
+    st.caption("Version: 20 Days Matrix")
     days_fetch = st.number_input("Số ngày tải:", 30, 365, 60, step=10)
-    days_show = st.slider("Hiển thị:", 10, 100, 20)
+    days_show = st.slider("Hiển thị dòng:", 10, 100, 20)
     if st.button("🔄 Tải lại dữ liệu", type="primary"):
         st.cache_data.clear()
         st.rerun()
@@ -85,10 +131,8 @@ except Exception as e:
     st.error(f"Lỗi: {e}")
     st.stop()
 
-df_show = df_full.head(days_show).copy()
-
 # === 🎯 DÀN NUÔI (MATRIX) ===
-st.title("🎯 DÀN NUÔI (CYCLIC & MULTI-PRIZE)")
+st.title("🎯 DÀN NUÔI (MATRIX 20 NGÀY)")
 st.divider()
 
 # Row 1: Nguồn và Miền
@@ -106,7 +150,7 @@ if region == "Miền Bắc":
     c3.selectbox("So với:", ["G6 + G7"], disabled=True)
     check_mode_desc = "G6 + G7"
     
-    check_range = c4.slider("Khung nuôi (ngày):", 1, 20, 7)
+    check_range = c4.slider("Khung nuôi (hiển thị N):", 1, 20, 20) # Mặc định max 20
     backtest_mode = c5.selectbox("Backtest:", ["Hiện tại", "Lùi 1 ngày", "Lùi 2 ngày", "Lùi 3 ngày", "Lùi 4 ngày", "Lùi 5 ngày"])
     
 else:
@@ -126,7 +170,7 @@ else:
     c5.selectbox("Giải:", ["G6+G7+G8"], disabled=True)
     check_mode_desc = "G6 + G7 + G8"
     
-    check_range = c6.slider("Khung:", 1, 20, 7)
+    check_range = c6.slider("Khung (N):", 1, 20, 20)
     backtest_mode = c7.selectbox("Backtest:", ["Hiện tại", "Lùi 1", "Lùi 2", "Lùi 3", "Lùi 4", "Lùi 5"])
 
 backtest_offset = int(backtest_mode.split()[1]) if backtest_mode != "Hiện tại" else 0
@@ -136,7 +180,6 @@ df_display = None
 df_check_source = None
 
 if region == "Miền Bắc":
-    # Use df_full which already has MB API data
     df_display = df_full
     df_check_source = df_full
 else:
@@ -160,7 +203,6 @@ else:
             df_temp = pd.DataFrame(all_station_data)
             grouped_data = []
             for date, group in df_temp.groupby('date'):
-                # Collect all numbers from G6, G7, G8 across all stations for this day
                 day_values = []
                 for _, row in group.iterrows():
                     day_values.extend(row.get('g6_list', []))
@@ -174,7 +216,6 @@ else:
             df_check_source['date_obj'] = pd.to_datetime(df_check_source['date'], format='%d/%m/%Y')
             df_check_source = df_check_source.sort_values('date_obj', ascending=False).drop(columns=['date_obj'])
             
-            # Filter for display (Specific Day)
             if selected_day != "Tất cả":
                 WEEKDAY_MAP = {"Thứ 2": 0, "Thứ 3": 1, "Thứ 4": 2, "Thứ 5": 3, "Thứ 6": 4, "Thứ 7": 5, "Chủ Nhật": 6}
                 target = WEEKDAY_MAP.get(selected_day)
@@ -182,12 +223,10 @@ else:
             else:
                 df_display = df_check_source.copy()
     else:
-        # Single Station
         with st.spinner(f"🔄 Tải {selected_station}..."):
             s_data = data_fetcher.fetch_station_data(selected_station, total_days=days_fetch)
             if not s_data: st.stop()
             
-            # Prepare result pool per day
             p_data = []
             for item in s_data:
                 pool = item.get('g6_list', []) + item.get('g7_list', []) + item.get('g8_list', [])
@@ -199,14 +238,13 @@ else:
 # === PREPARE ANALYSIS DATA ===
 all_days_data = []
 start_idx = backtest_offset
-end_idx = min(backtest_offset + 30, len(df_display))
+end_idx = min(backtest_offset + days_show, len(df_display))
 df_full_lookup = df_full.set_index('date') if not df_full.empty else pd.DataFrame()
 
 for i in range(start_idx, end_idx):
     row = df_display.iloc[i]
     date_val = row['date']
     
-    # Get Source Numbers (Input)
     row_src = None
     if region == "Miền Bắc":
         row_src = row
@@ -216,7 +254,6 @@ for i in range(start_idx, end_idx):
     
     if row_src is None: continue
 
-    # Generate Input String
     src_str = ""
     if src_mode == "Thần Tài": 
         src_str = str(row_src.get('tt_number', ''))
@@ -227,15 +264,12 @@ for i in range(start_idx, end_idx):
     
     if not src_str or src_str == "nan": continue
     
-    # === LOGIC MỚI: DÀN NHỊ HỢP VÒNG ===
+    # === LOGIC DÀN NHỊ HỢP VÒNG ===
     combos = logic.tao_dan_nhi_hop_vong(src_str)
     
-    # Get Result Pool for this day (to store in table, though checking is mostly future)
     if region == "Miền Bắc":
-        # Pool = G6 + G7
         pool = row.get('mb_g6_list', []) + row.get('mb_g7_list', [])
     else:
-        # Pool = G6 + G7 + G8 (already prepared in df_display['result_pool'])
         pool = row.get('result_pool', [])
         
     all_days_data.append({
@@ -247,21 +281,29 @@ for i in range(start_idx, end_idx):
 if all_days_data:
     st.markdown(f"### 📋 Bảng Theo Dõi ({check_mode_desc})")
     
-    MAX_COLS = 10
+    # === THAY ĐỔI QUAN TRỌNG: MAX_COLS = 20 ===
+    MAX_COLS = 20
+    
     check_source_lookup = df_check_source.set_index('date') if df_check_source is not None else pd.DataFrame()
     
     table_html = "<div class='table-wrapper'><table class='tracking-table'><thead><tr>"
     table_html += "<th>Ngày</th><th>Mốc</th>"
-    for k in range(1, MAX_COLS + 1): table_html += f"<th>N{k}</th>"
+    
+    # Header N1 -> N20
+    for k in range(1, MAX_COLS + 1): 
+        table_html += f"<th>N{k}</th>"
     table_html += "</tr></thead><tbody>"
     
     for row_idx, day_data in enumerate(all_days_data):
         date, source, combos, i = day_data['date'], day_data['source'], day_data['combos'], day_data['index']
-        table_html += f"<tr><td>{date}</td><td class='moc-col'>{source}</td>"
+        table_html += f"<tr><td class='date-col'>{date}</td><td class='moc-col'>{source}</td>"
         
-        num_cols = min(row_idx + 1, MAX_COLS)
+        # Số ngày đã qua kể từ ngày tạo cầu (để tô màu tam giác)
+        days_passed = row_idx + 1
+        
         for k in range(1, MAX_COLS + 1):
-            if k > num_cols:
+            # Chỉ hiển thị ô nếu nằm trong vùng tam giác
+            if k > days_passed:
                 table_html += "<td style='background-color:#f8f9fa'></td>"
                 continue
                 
@@ -299,21 +341,18 @@ if all_days_data:
     table_html += "</tbody></table></div>"
     st.markdown(table_html, unsafe_allow_html=True)
     
-    # ... (Statistics & Pending Sets logic same as before, just using the new check_pool) ...
-    # Simplified Stats Display
+    # === STATISTICS ===
     st.markdown("---")
-    st.caption("Ghi chú: MB so G6+G7. MN/MT so G6+G7+G8.")
+    st.caption("Ghi chú: Bảng hiển thị tối đa 20 ngày nuôi.")
     
-    # Calculate Pending
     pending = []
     for row_idx, day_data in enumerate(all_days_data):
         combos = day_data['combos']
-        # Check against history
         has_hit = False
-        num_checks = row_idx + 1
+        # Chỉ check tối đa đến MAX_COLS (20 ngày) hoặc số ngày thực tế đã qua
+        num_checks = min(row_idx + 1, MAX_COLS)
         
         for k in range(1, num_checks + 1):
-            # (Reuse check logic from above)
             check_pool = []
             if selected_station == "Tất cả" and region != "Miền Bắc":
                 try:
@@ -340,12 +379,12 @@ if all_days_data:
             pending.append({
                 "Ngày": day_data['date'],
                 "Dàn số": ", ".join(combos),
-                "Số lượng": len(combos)
+                "Số lượng": len(combos),
+                "Đã nuôi": f"{num_checks} ngày"
             })
 
     if pending:
-        st.subheader("🔥 Các Dàn Chưa Ra")
+        st.subheader(f"🔥 Các Dàn Chưa Ra (Trong {MAX_COLS} ngày)")
         st.dataframe(pd.DataFrame(pending), use_container_width=True)
     else:
-        st.success("Tất cả các dàn trong khung hiển thị đều đã nổ!")
-
+        st.success(f"Tuyệt vời! Tất cả các dàn đã nổ trong vòng {MAX_COLS} ngày.")
