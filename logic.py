@@ -31,28 +31,6 @@ ZODIAC_DICT = {
     "Hợi":  ["11","23","35","47","59","71","83","95"]
 }
 
-# --- CÁC HÀM LOGIC MỚI (DÀN NHỊ HỢP VÒNG) ---
-def tao_dan_nhi_hop_vong(source_str: str) -> list[str]:
-    """
-    Tạo dàn số từ chuỗi nguồn theo quy tắc vòng:
-    VD: 1234 -> 12, 23, 34, 41 và các số đảo của chúng.
-    """
-    if not source_str or len(source_str) < 2:
-        return []
-    
-    pairs = set()
-    n = len(source_str)
-    
-    for i in range(n):
-        # Lấy số hiện tại và số kế tiếp (nếu cuối thì vòng về đầu)
-        c1 = source_str[i]
-        c2 = source_str[(i + 1) % n]
-        
-        pairs.add(c1 + c2)
-        pairs.add(c2 + c1)
-        
-    return sorted(list(pairs))
-
 # --- CÁC HÀM TRA CỨU CƠ BẢN ---
 def bo(db: str) -> str:
     db = db.zfill(2)
@@ -91,6 +69,7 @@ def zodiac(pair: str) -> str:
 
 # --- CÁC HÀM HỖ TRỢ HIỂN THỊ ---
 def doc_so_chu(so):
+    """Chuyển số thành chữ (VD: 85 -> tám năm)"""
     so = str(so)
     map_chu = {
         "0": "không", "1": "một", "2": "hai", "3": "ba", "4": "bốn",
@@ -130,26 +109,32 @@ def get_hieu_dan(hieu_val):
         return ", ".join(hieu_map.get(h, []))
     except: return ""
 
+# --- CÁC HÀM MỚI THÊM (ĐẦU/ĐUÔI GAN) ---
 def get_dau_dan(dau_val):
+    """Trả về dàn số theo đầu (VD: đầu 1 -> 10,11...19)"""
     return ", ".join([f"{dau_val}{i}" for i in range(10)])
 
 def get_duoi_dan(duoi_val):
+    """Trả về dàn số theo đuôi (VD: đuôi 5 -> 05,15...95)"""
     return ", ".join([f"{i}{duoi_val}" for i in range(10)])
 
+# --- CÁC HÀM LOGIC NÂNG CAO ---
 def tim_chu_so_bet(d1, d2, kieu):
+    """Tìm chữ số bệt giữa 2 dãy số"""
     bet = []
-    if kieu == "Bệt Phải":
+    if kieu == "Bệt Phải": # So sánh chéo: d1[i] == d2[i+1]
         for i in range(min(len(d1) - 1, len(d2))):
             if d1[i] == d2[i + 1]: bet.append(d1[i])
-    elif kieu == "Thẳng":
+    elif kieu == "Thẳng": # So sánh thẳng: d1[i] == d2[i]
         for i in range(min(len(d1), len(d2))):
             if d1[i] == d2[i]: bet.append(d1[i])
-    elif kieu == "Bệt trái":
+    elif kieu == "Bệt trái": # So sánh chéo ngược: d1[i] == d2[i-1]
         for i in range(1, min(len(d1), len(d2) + 1)):
             if d1[i] == d2[i - 1]: bet.append(d1[i])
     return sorted(set(bet))
 
 def lay_dan_cham(chuoi_cham):
+    """Tạo dàn số từ các chạm"""
     res = []
     for i in range(100):
         pair = f"{i:02d}"
@@ -160,6 +145,7 @@ def lay_dan_cham(chuoi_cham):
     return sorted(set(res))
 
 def lay_nhi_hop(bet_digits, digits_2_dong):
+    """Tạo dàn nhị hợp"""
     unique_digits = sorted(set(digits_2_dong))
     nh = []
     for a, b in combinations(unique_digits, 2):
