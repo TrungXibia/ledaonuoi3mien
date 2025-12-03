@@ -1,78 +1,71 @@
 import requests
-import concurrent.futures
-from bs4 import BeautifulSoup
+import json
 import logging
 import time
-from typing import List, Dict, Tuple
-import json
+from bs4 import BeautifulSoup
+from typing import List, Dict, Union
 
+# Cấu hình Logging
 logging.basicConfig(level=logging.INFO)
-HEADERS = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"}
 
-# === API URLS ===
-DAI_API = {
-    # Miền Bắc
-    "Miền Bắc": "https://www.kqxs88.live/api/front/open/lottery/history/list/game?limitNum=60&gameCode=miba",
-    # Miền Nam
-    "An Giang": "https://www.kqxs88.live/api/front/open/lottery/history/list/game?limitNum=60&gameCode=angi",
-    "Bạc Liêu": "https://www.kqxs88.live/api/front/open/lottery/history/list/game?limitNum=60&gameCode=bali",
-    "Bến Tre": "https://www.kqxs88.live/api/front/open/lottery/history/list/game?limitNum=60&gameCode=betr",
-    "Bình Dương": "https://www.kqxs88.live/api/front/open/lottery/history/list/game?limitNum=60&gameCode=bidu",
-    "Bình Thuận": "https://www.kqxs88.live/api/front/open/lottery/history/list/game?limitNum=60&gameCode=bith",
-    "Bình Phước": "https://www.kqxs88.live/api/front/open/lottery/history/list/game?limitNum=60&gameCode=biph",
-    "Cà Mau": "https://www.kqxs88.live/api/front/open/lottery/history/list/game?limitNum=60&gameCode=cama",
-    "Cần Thơ": "https://www.kqxs88.live/api/front/open/lottery/history/list/game?limitNum=60&gameCode=cath",
-    "Đà Lạt": "https://www.kqxs88.live/api/front/open/lottery/history/list/game?limitNum=60&gameCode=dalat",
-    "Đồng Nai": "https://www.kqxs88.live/api/front/open/lottery/history/list/game?limitNum=60&gameCode=dona",
-    "Đồng Tháp": "https://www.kqxs88.live/api/front/open/lottery/history/list/game?limitNum=60&gameCode=doth",
-    "Hậu Giang": "https://www.kqxs88.live/api/front/open/lottery/history/list/game?limitNum=60&gameCode=hagi",
-    "Kiên Giang": "https://www.kqxs88.live/api/front/open/lottery/history/list/game?limitNum=60&gameCode=kigi",
-    "Long An": "https://www.kqxs88.live/api/front/open/lottery/history/list/game?limitNum=60&gameCode=loan",
-    "Sóc Trăng": "https://www.kqxs88.live/api/front/open/lottery/history/list/game?limitNum=60&gameCode=sotr",
-    "Tây Ninh": "https://www.kqxs88.live/api/front/open/lottery/history/list/game?limitNum=60&gameCode=tani",
-    "Tiền Giang": "https://www.kqxs88.live/api/front/open/lottery/history/list/game?limitNum=60&gameCode=tigi",
-    "TP. Hồ Chí Minh": "https://www.kqxs88.live/api/front/open/lottery/history/list/game?limitNum=60&gameCode=tphc",
-    "Trà Vinh": "https://www.kqxs88.live/api/front/open/lottery/history/list/game?limitNum=60&gameCode=trvi",
-    "Vĩnh Long": "https://www.kqxs88.live/api/front/open/lottery/history/list/game?limitNum=60&gameCode=vilo",
-    "Vũng Tàu": "https://www.kqxs88.live/api/front/open/lottery/history/list/game?limitNum=60&gameCode=vuta",
-    # Miền Trung
-    "Đà Nẵng": "https://www.kqxs88.live/api/front/open/lottery/history/list/game?limitNum=60&gameCode=dana",
-    "Bình Định": "https://www.kqxs88.live/api/front/open/lottery/history/list/game?limitNum=60&gameCode=bidi",
-    "Đắk Lắk": "https://www.kqxs88.live/api/front/open/lottery/history/list/game?limitNum=60&gameCode=dalak",
-    "Đắk Nông": "https://www.kqxs88.live/api/front/open/lottery/history/list/game?limitNum=60&gameCode=dano",
-    "Gia Lai": "https://www.kqxs88.live/api/front/open/lottery/history/list/game?limitNum=60&gameCode=gila",
-    "Khánh Hòa": "https://www.kqxs88.live/api/front/open/lottery/history/list/game?limitNum=60&gameCode=khho",
-    "Kon Tum": "https://www.kqxs88.live/api/front/open/lottery/history/list/game?limitNum=60&gameCode=kotu",
-    "Ninh Thuận": "https://www.kqxs88.live/api/front/open/lottery/history/list/game?limitNum=60&gameCode=nith",
-    "Phú Yên": "https://www.kqxs88.live/api/front/open/lottery/history/list/game?limitNum=60&gameCode=phye",
-    "Quảng Bình": "https://www.kqxs88.live/api/front/open/lottery/history/list/game?limitNum=60&gameCode=qubi",
-    "Quảng Nam": "https://www.kqxs88.live/api/front/open/lottery/history/list/game?limitNum=60&gameCode=quna",
-    "Quảng Ngãi": "https://www.kqxs88.live/api/front/open/lottery/history/list/game?limitNum=60&gameCode=qung",
-    "Quảng Trị": "https://www.kqxs88.live/api/front/open/lottery/history/list/game?limitNum=60&gameCode=qutr",
-    "Thừa Thiên Huế": "https://www.kqxs88.live/api/front/open/lottery/history/list/game?limitNum=60&gameCode=thth"
+# Header giả lập trình duyệt để tránh bị chặn
+HEADERS = {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
+    "Accept": "application/json, text/plain, */*",
+    "Referer": "https://www.kqxs88.live/"
 }
 
+# API Endpoint gốc lấy từ file HTML
+API_BASE_URL = "https://www.kqxs88.live/api/front/open/lottery/history/list/game"
+
+# BẢNG MÃ ĐÀI (Mapping Name -> Code)
+# Dựa trên quy tắc đặt tên của kqxs88 (4 chữ cái đầu hoặc viết tắt)
+STATION_CODES = {
+    # --- MIỀN BẮC ---
+    "Miền Bắc": "miba",
+    
+    # --- MIỀN NAM ---
+    "TP. Hồ Chí Minh": "tphc", "Đồng Tháp": "doth", "Cà Mau": "cama",
+    "Bến Tre": "betr", "Vũng Tàu": "vuta", "Bạc Liêu": "bali",
+    "Đồng Nai": "dona", "Cần Thơ": "cath", "Sóc Trăng": "sotr",
+    "Tây Ninh": "tani", "An Giang": "angi", "Bình Thuận": "bith",
+    "Vĩnh Long": "vilo", "Bình Dương": "bidu", "Trà Vinh": "trvi",
+    "Long An": "loan", "Bình Phước": "biph", "Hậu Giang": "hagi",
+    "Tiền Giang": "tigi", "Kiên Giang": "kigi", "Đà Lạt": "dalat", 
+    # Lưu ý: Lâm Đồng thường dùng mã 'dalat' hoặc 'lado', check file HTML dùng 'dalat' ở list tên
+    
+    # --- MIỀN TRUNG ---
+    "Thừa Thiên Huế": "thth", "Phú Yên": "phye",
+    "Đắk Lắk": "dalak", "Quảng Nam": "quna",
+    "Đà Nẵng": "dana", "Khánh Hòa": "khho",
+    "Bình Định": "bidi", "Quảng Trị": "qutr", "Quảng Bình": "qubi",
+    "Gia Lai": "gila", "Ninh Thuận": "nith",
+    "Quảng Ngãi": "qung", "Đắk Nông": "dano", "Kon Tum": "kotu"
+}
+
+# Lịch quay không thay đổi
 LICH_QUAY_NAM = {
     "Chủ Nhật": ["Tiền Giang", "Kiên Giang", "Đà Lạt"],
     "Thứ 2": ["Đồng Tháp", "TP. Hồ Chí Minh", "Cà Mau"],
     "Thứ 3": ["Bến Tre", "Vũng Tàu", "Bạc Liêu"],
     "Thứ 4": ["Đồng Nai", "Cần Thơ", "Sóc Trăng"],
     "Thứ 5": ["Tây Ninh", "An Giang", "Bình Thuận"],
-    "Thứ 6": ["Trà Vinh", "Vĩnh Long", "Bình Dương"],
-    "Thứ 7": ["Long An", "Bình Phước", "Hậu Giang", "TP. Hồ Chí Minh"]
+    "Thứ 6": ["Vĩnh Long", "Bình Dương", "Trà Vinh"],
+    "Thứ 7": ["TP. Hồ Chí Minh", "Long An", "Bình Phước", "Hậu Giang"]
 }
 
 LICH_QUAY_TRUNG = {
-    "Chủ Nhật": ["Khánh Hòa", "Kon Tum"],
+    "Chủ Nhật": ["Kon Tum", "Khánh Hòa"],
     "Thứ 2": ["Thừa Thiên Huế", "Phú Yên"],
     "Thứ 3": ["Đắk Lắk", "Quảng Nam"],
-    "Thứ 4": ["Khánh Hòa", "Đà Nẵng"],
-    "Thứ 5": ["Quảng Trị", "Bình Định", "Quảng Bình"],
+    "Thứ 4": ["Đà Nẵng", "Khánh Hòa"],
+    "Thứ 5": ["Bình Định", "Quảng Trị", "Quảng Bình"],
     "Thứ 6": ["Gia Lai", "Ninh Thuận"],
-    "Thứ 7": ["Quảng Ngãi", "Đà Nẵng", "Đắk Nông"]
+    "Thứ 7": ["Đà Nẵng", "Quảng Ngãi", "Đắk Nông"]
 }
 
 def get_stations_by_day(region: str, day: str) -> List[str]:
+    """Trả về danh sách tên đài theo ngày và miền."""
     if region == "Miền Nam":
         return LICH_QUAY_NAM.get(day, [])
     elif region == "Miền Trung":
@@ -80,6 +73,7 @@ def get_stations_by_day(region: str, day: str) -> List[str]:
     return []
 
 def get_all_stations_in_region(region: str) -> List[str]:
+    """Trả về tất cả các đài trong miền."""
     stations = set()
     schedule = {}
     if region == "Miền Nam":
@@ -92,92 +86,121 @@ def get_all_stations_in_region(region: str) -> List[str]:
         
     return sorted(list(stations))
 
-def _extract_tails(prize_str: str) -> List[str]:
+def _extract_tails(prize_content) -> List[str]:
     """
-    Extract last 2 digits from a prize string.
-    Handles comma-separated values (e.g., "1234,5678").
+    Tách 2 số cuối từ nội dung giải.
+    Input có thể là string ("1234,5678") hoặc int/string đơn ("12345").
     """
-    if not prize_str:
-        return []
-    
     results = []
-    # Split by comma if multiple numbers exists
-    raw_nums = prize_str.replace(" ", "").split(",")
-    for num in raw_nums:
-        if len(num) >= 2:
-            results.append(num[-2:])
+    if not prize_content:
+        return results
+        
+    # Chuyển về string nếu chưa phải
+    s = str(prize_content)
+    
+    # Tách theo dấu phẩy (nếu có nhiều số trong 1 giải)
+    parts = s.split(',')
+    
+    for part in parts:
+        part = part.strip()
+        if len(part) >= 2 and part.isdigit():
+            results.append(part[-2:])
+            
     return results
 
 def fetch_station_data(station_name: str, total_days: int = 60) -> List[Dict]:
     """
-    Fetch lottery data for a specific station from API.
-    Can be used for MN, MT and now MB (using 'Miền Bắc' as station name).
+    Hàm gọi API chính.
+    Logic: Lấy code từ tên -> Gọi API -> Parse JSON detail -> Trả về list clean.
     """
-    url_template = DAI_API.get(station_name)
-    if not url_template:
-        logging.error(f"No API URL found for station: {station_name}")
+    game_code = STATION_CODES.get(station_name)
+    if not game_code:
+        logging.error(f"Không tìm thấy mã game cho đài: {station_name}")
         return []
-    
-    url = url_template.replace("limitNum=60", f"limitNum={total_days}")
-    
+
+    params = {
+        "limitNum": total_days,
+        "gameCode": game_code
+    }
+
     try:
-        response = requests.get(url, headers=HEADERS, timeout=10)
+        # Gọi API với params
+        response = requests.get(API_BASE_URL, params=params, headers=HEADERS, timeout=15)
         response.raise_for_status()
-        data = response.json()
         
-        if not data.get("success"):
-            logging.error(f"API returned error for {station_name}")
-            return []
+        data_json = response.json()
         
-        issue_list = data.get("t", {}).get("issueList", [])
+        # Cấu trúc JSON thường là: { "data": { "issueList": [...] } } 
+        # hoặc đôi khi { "t": { "issueList": [...] } } tùy server cache
+        issue_list = []
+        if "data" in data_json and data_json["data"]:
+             issue_list = data_json["data"].get("issueList", [])
+        elif "t" in data_json and data_json["t"]:
+             issue_list = data_json["t"].get("issueList", [])
+        elif "issueList" in data_json:
+             issue_list = data_json["issueList"]
+             
         results = []
         
-        for issue in issue_list[:total_days]:
-            turn_num = issue.get("turnNum", "")
-            detail = issue.get("detail", "")
+        for issue in issue_list:
+            turn_num = issue.get("turnNum", "") # Ngày quay (DD/MM/YYYY)
+            detail_raw = issue.get("detail", "")
             
-            if not turn_num or not detail:
+            if not turn_num or not detail_raw:
                 continue
-            
-            try:
-                prizes = json.loads(detail)
-                
-                # Basic fields
-                db_str = prizes[0] if len(prizes) > 0 else ""
-                g1_str = prizes[1] if len(prizes) > 1 else ""
-                
-                result = {
-                    "date": turn_num,
-                    "db": db_str,
-                    "db_2so": db_str[-2:] if db_str else "",
-                    "g1_2so": g1_str[-2:] if g1_str else "",
-                }
-                
-                # Extract lists of tails for checking
-                # Note: API structure usually: 0:DB, 1:G1, ... 6:G6, 7:G7, 8:G8 (for MN/MT)
-                # For MB: 0:DB, 1:G1, ... 6:G6, 7:G7 (No G8)
-                
-                # Safe extraction helper
-                def get_p(idx): return prizes[idx] if len(prizes) > idx else ""
 
-                result["g6_list"] = _extract_tails(get_p(6))
-                result["g7_list"] = _extract_tails(get_p(7))
-                result["g8_list"] = _extract_tails(get_p(8)) # Only meaningful for MN/MT
-                
-                results.append(result)
-                
-            except json.JSONDecodeError as e:
-                logging.error(f"Error parsing detail for {station_name}: {e}")
+            # Parse trường 'detail' (thường là string JSON)
+            prizes = []
+            if isinstance(detail_raw, str):
+                try:
+                    prizes = json.loads(detail_raw)
+                except json.JSONDecodeError:
+                    continue
+            elif isinstance(detail_raw, list):
+                prizes = detail_raw
+            else:
                 continue
-        
+                
+            # Đảm bảo prizes là list
+            if not isinstance(prizes, list) or not prizes:
+                continue
+
+            # --- MAPPING GIẢI ---
+            # MB: 0=ĐB, 1=G1 ... 7=G7 (G7 có 4 số)
+            # MN/MT: 0=ĐB, 1=G1 ... 8=G8 (G8 có 1 số 2 chữ số)
+            
+            db_val = prizes[0] if len(prizes) > 0 else ""
+            
+            # Khởi tạo object kết quả
+            res_obj = {
+                "date": turn_num,
+                "db": str(db_val),
+                "db_2so": str(db_val)[-2:] if str(db_val) else "",
+                "g6_list": [],
+                "g7_list": [],
+                "g8_list": [] # Chỉ dùng cho MN/MT
+            }
+            
+            if game_code == "miba": # Miền Bắc
+                # MB: G6 index 6, G7 index 7
+                if len(prizes) > 6: res_obj["g6_list"] = _extract_tails(prizes[6])
+                if len(prizes) > 7: res_obj["g7_list"] = _extract_tails(prizes[7])
+                # MB ko có G8
+            else: # Miền Nam / Trung
+                # MN/MT: G6 index 6, G7 index 7, G8 index 8
+                if len(prizes) > 6: res_obj["g6_list"] = _extract_tails(prizes[6])
+                if len(prizes) > 7: res_obj["g7_list"] = _extract_tails(prizes[7])
+                if len(prizes) > 8: res_obj["g8_list"] = _extract_tails(prizes[8])
+
+            results.append(res_obj)
+            
         return results
-        
-    except requests.exceptions.RequestException as e:
-        logging.error(f"Error fetching data for {station_name}: {e}")
-        return []
+
     except Exception as e:
-        logging.error(f"Unexpected error for {station_name}: {e}")
+        logging.error(f"Lỗi khi tải dữ liệu đài {station_name} ({game_code}): {e}")
         return []
+
+# --- CÁC HÀM CRAWL PHỤ (Giữ nguyên hoặc tối ưu nhẹ) ---
 
 def fetch_url(url: str, max_retries: int = 3) -> BeautifulSoup:
     for attempt in range(max_retries):
@@ -185,9 +208,7 @@ def fetch_url(url: str, max_retries: int = 3) -> BeautifulSoup:
             r = requests.get(url, headers=HEADERS, timeout=10)
             r.raise_for_status()
             return BeautifulSoup(r.text, "html.parser")
-        except requests.exceptions.Timeout:
-            time.sleep(1)
-        except requests.exceptions.RequestException as e:
+        except Exception:
             if attempt < max_retries - 1:
                 time.sleep(1)
             else:
@@ -203,13 +224,14 @@ def _normalize_date(date_str: str) -> str:
         return date_str
 
 def fetch_dien_toan(total_days: int) -> List[Dict]:
+    # Crawl từ trang ketqua04 (hoặc nguồn khác nếu cần)
     soup = fetch_url(f"https://ketqua04.net/so-ket-qua-dien-toan-123/{total_days}")
     data = []
     if not soup: return data
     
     try:
         divs = soup.find_all("div", class_="result_div", id="result_123")
-        for div in divs[:total_days]:
+        for div in divs:
             ds = div.find("span", id="result_date")
             date_raw = ds.text.strip() if ds else ""
             if not date_raw: continue
@@ -223,6 +245,7 @@ def fetch_dien_toan(total_days: int) -> List[Dict]:
                     nums = [c.text.strip() for c in cells]
                     if all(n.isdigit() for n in nums):
                         data.append({"date": date, "dt_numbers": nums})
+            if len(data) >= total_days: break
     except Exception as e:
         logging.error(f"Error parsing Điện Toán: {e}")
     return data
@@ -234,7 +257,7 @@ def fetch_than_tai(total_days: int) -> List[Dict]:
     
     try:
         divs = soup.find_all("div", class_="result_div", id="result_tt4")
-        for div in divs[:total_days]:
+        for div in divs:
             ds = div.find("span", id="result_date")
             date_raw = ds.text.strip() if ds else ""
             if not date_raw: continue
@@ -246,13 +269,11 @@ def fetch_than_tai(total_days: int) -> List[Dict]:
                 num = cell.text.strip() if cell else ""
                 if num.isdigit() and len(num) == 4:
                     data.append({"date": date, "tt_number": num})
+            if len(data) >= total_days: break
     except Exception as e:
         logging.error(f"Error parsing Thần Tài: {e}")
     return data
 
 def fetch_xsmb_full(total_days: int) -> List[Dict]:
-    """
-    Fetch full XSMB data using the API (same source as MN/MT).
-    Returns list of dicts with keys for validation (g6_list, g7_list).
-    """
+    """Wrapper cho Miền Bắc sử dụng hàm chuẩn."""
     return fetch_station_data("Miền Bắc", total_days)
